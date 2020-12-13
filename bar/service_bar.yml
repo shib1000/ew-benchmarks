@@ -1,0 +1,131 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bar-deployment
+  namespace: ns-personal-shibmish
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bar
+  template:
+    metadata:
+      labels:
+        app: bar
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/path: '/actuator/prometheus'
+    spec:
+      containers:
+      - name: bar-cont
+        image: quay.io/shib1000/ew-benchmark
+        env:
+         - name: ENVIRONMENT_NAME
+           value: local
+         - name: REGION_NAME
+           value: local
+        ports:
+        - containerPort: 8080
+      serviceAccountName: default
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bar-service
+  labels:
+    run: bar-service
+  namespace: ns-personal-shibmish
+spec:
+  ports:
+    - port: 80
+      protocol: TCP
+      targetPort: 8080
+  selector:
+    app: bar
+---
+apiVersion: contour.heptio.com/v1beta1
+kind: IngressRoute
+metadata:
+  annotations:
+    kubernetes.io/ingress.class: contour-public
+  name: bar-ingress
+  namespace: ns-personal-shibmish
+spec:
+  virtualhost:
+    fqdn: shibu-bar.sandbox.cloud.adobe.io
+    tls:
+      secretName: heptio-contour/cluster-ssl-alternate
+  routes:
+    - match: /
+      permitInsecure: true
+      perFilterConfig:
+        envoy.filters.http.header_size:
+          header_size:
+            max_bytes: 12288
+      services:
+        - healthCheck:
+            healthyThresholdCount: 1
+            intervalSeconds: 60
+            path: /ping
+            timeoutSeconds: 5
+            unhealthyThresholdCount: 3
+          name: bar-service
+          port: 80
+      timeout: 60s
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  # Blocks all outbound access by default
+  # Allows traffic to 0.0.0.0/0
+  # Blocks traffic to 10.0.0.0/8
+  # Blocks traffic to 172.16.0.0/16
+  # If VPC peering is enabled, allows traffic to 10.x.y.z/24 (VPC CIDR)
+  # Restrict ports/protocols?
+  # -----
+  name: np-default-policy
+  namespace: ns-personal-shibmish
+spec:
+  podSelector: {}
+  # declaring a policy in a namespace blocks everything by default
+  # the subsequent ingress/egress spec properties are whitelists
+  policyTypes:
+    - Egress
+  egress:
+    - ports:
+      - port: 80
+        protocol: TCP
+      - port: 443
+        protocol: TCP
+      to:
+      - ipBlock:
+          cidr: 0.0.0.0/0
+          except:
+          # opening 0.0.0.0/0 means we have to close others
+          # blocks defaults access to private networks
+          - 10.0.0.0/8
+          # Cidr Range for POD ip addresses
+          # ref: https://git.corp.adobe.com/adobe-platform/k8s-infrastructure/blob/master/src/config/metadata.py#L660
+          # - 172.16.0.0/12
+          # Cidr Range for Cluster service ip addresses
+          # ref: https://git.corp.adobe.com/adobe-platform/k8s-infrastructure/blob/master/src/config/metadata.py#L249
+          # - 192.168.0.0/16
+---
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: ingress-from-foo
+  namespace: ns-personal-shibmish
+spec:
+  policyTypes: [ "Ingress" ]
+  podSelector:
+    matchLabels:
+      app: bar
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: foo
+    ports:
+    - port: 8080
+      protocol: TCP
