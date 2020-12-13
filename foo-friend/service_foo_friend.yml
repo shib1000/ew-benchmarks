@@ -1,23 +1,33 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: foo-deployment
+  name: foo-friend-deployment
   namespace: ns-personal-shibmish
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: foo
+      app: foo-friend
   template:
     metadata:
       labels:
-        app: foo
+        app: foo-friend
       annotations:
         prometheus.io/scrape: 'true'
         prometheus.io/path: '/actuator/prometheus'
     spec:
+      affinity:
+       podAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+           matchExpressions:
+           - key: app
+             operator: In
+             values:
+             - foo
+          topologyKey: kubernetes.io/hostname
       containers:
-      - name: foo-cont
+      - name: foo-friend-cont
         image: quay.io/shib1000/ew-benchmark:v1
         env:
          - name: ENVIRONMENT_NAME
@@ -31,9 +41,9 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: foo-service
+  name: foo-friend-service
   labels:
-    run: foo-service
+    run: foo-friend-service
   namespace: ns-personal-shibmish
 spec:
   ports:
@@ -41,37 +51,7 @@ spec:
       protocol: TCP
       targetPort: 8080
   selector:
-    app: foo
----
-apiVersion: contour.heptio.com/v1beta1
-kind: IngressRoute
-metadata:
-  annotations:
-    kubernetes.io/ingress.class: contour-corp
-  name: foo-ingress
-  namespace: ns-personal-shibmish
-spec:
-  virtualhost:
-    fqdn: shibu-foo.sandbox.cloud.adobe.io
-    tls:
-      secretName: heptio-contour/cluster-ssl-alternate
-  routes:
-    - match: /
-      permitInsecure: true
-      perFilterConfig:
-        envoy.filters.http.header_size:
-          header_size:
-            max_bytes: 12288
-      services:
-        - healthCheck:
-            healthyThresholdCount: 1
-            intervalSeconds: 60
-            path: /ping
-            timeoutSeconds: 5
-            unhealthyThresholdCount: 3
-          name: foo-service
-          port: 80
-      timeout: 60s
+    app: foo-friend
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

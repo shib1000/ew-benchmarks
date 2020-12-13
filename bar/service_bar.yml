@@ -16,9 +16,19 @@ spec:
         prometheus.io/scrape: 'true'
         prometheus.io/path: '/actuator/prometheus'
     spec:
+      affinity:
+       podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+           matchExpressions:
+           - key: app
+             operator: In
+             values:
+             - foo
+          topologyKey: topology.kubernetes.io/zone
       containers:
       - name: bar-cont
-        image: quay.io/shib1000/ew-benchmark
+        image: quay.io/shib1000/ew-benchmark:v1
         env:
          - name: ENVIRONMENT_NAME
            value: local
